@@ -134,9 +134,6 @@ fn noise_signal(signal: &Vec<f64>) -> Vec<f64> {
             }
         })
         .collect();
-    // buffer
-    //     .iter()
-    //     .for_each(|&v| println!("re={}  im={} abs={} norm={}", v.re, v.im, v.abs(), v.norm()));
     ifft_complex(&buffer).iter().map(|c| c.re).collect()
 }
 
@@ -158,7 +155,7 @@ where
 
 fn amplitude_demodulation(modulated_signal: &Vec<f64>, carrier_signal: &[f64]) -> Vec<f64> {
     let m = 0.9;
-    let epsilon = 1e-10; // A small constant to avoid division by zero
+    let epsilon = 1e-10;
     assert_eq!(modulated_signal.len(), carrier_signal.len());
 
     modulated_signal
@@ -321,18 +318,13 @@ fn main() {
             (2.0 * PI * carrier_freq * time + modulation_term).sin()
         })
         .collect();
-
-    // Compute the frequency spectrum of the frequency modulated signal
     let freq_mod_spectrum = signal_spectrum(&freq_mod_signal);
 
-    // Compute phase modulated signal
     let phase_mod_signal: Vec<f64> = timeline
         .iter()
         .zip(normalized_mod_signal.iter())
         .map(|(&t, &mod_amp)| (2.0 * PI * carrier_freq * t + mod_amp).sin())
         .collect();
-
-    // Compute the frequency spectrum of the phase modulated signal
     let phase_mod_spectrum = signal_spectrum(&phase_mod_signal);
 
     let dirname = String::from("out/frequency-phase/");
