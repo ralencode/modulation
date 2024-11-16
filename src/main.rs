@@ -67,8 +67,8 @@ where
 
     buffer
         .iter()
-        .take(signal.len() / 2)
         .map(|c| c.norm() / signal.len() as f64 * 2.0)
+        // .map(|c| c.abs() / signal.len() as f64)
         .collect()
 }
 
@@ -96,45 +96,21 @@ fn ifft_complex(spectrum: &Vec<Complex<f64>>) -> Vec<Complex<f64>> {
     buffer.iter().map(|c| *c / spectrum.len() as f64).collect()
 }
 
-fn hilbert<T>(signal: &Vec<T>) -> Vec<f64>
-where
-    T: Into<f64> + Copy,
-{
-    let fft_result = fft_complex(signal);
-    let len = fft_result.len();
-    let mut hilbert_spectrum: Vec<Complex<f64>> = fft_result
-        .into_iter()
-        .enumerate()
-        .map(|(i, c)| if i <= len / 2 { c } else { Complex::from(0.0) })
-        .collect();
-
-    hilbert_spectrum[0] = Complex::new(hilbert_spectrum[0].re / 2.0, 0.0);
-
-    let ifft_result: Vec<Complex<f64>> = ifft_complex(&hilbert_spectrum);
-    ifft_result.iter().map(|c| c.abs()).collect()
-}
-
-fn noise_signal(signal: &Vec<f64>) -> Vec<f64> {
-    let n = signal.len();
-    let one_percent = (n as f64 * 0.01).ceil() as usize;
-
-    let mut buffer = fft_complex(&signal);
-
-    for i in 0..one_percent {
-        buffer[i] = Complex::new(0.0, 0.0);
-        buffer[n - 1 - i] = Complex::new(0.0, 0.0);
-    }
-    buffer = buffer
+fn noise_spectrum(spectrum: &Vec<Complex<f64>>) -> Vec<f64> {
+    let noised_spectrum = &spectrum
         .iter()
-        .map(|&i| {
-            if i.abs() <= 0.3 {
-                Complex::new(0.0, 0.0)
+        .map(|&value| {
+            if value.abs() <= 500.0 {
+                Complex::<f64>::new(0.0, 0.0)
             } else {
-                i
+                value
             }
         })
         .collect();
-    ifft_complex(&buffer).iter().map(|c| c.re).collect()
+    ifft_complex(&noised_spectrum)
+        .iter()
+        .map(|&c| c.re)
+        .collect()
 }
 
 fn amplitude_modulation<T>(signal: &Vec<T>, carrier_signal: &Vec<f64>) -> Vec<f64>
@@ -150,24 +126,6 @@ where
         .iter()
         .zip(carrier_signal.iter())
         .map(|pair| pair.1 * (1.0 + m * Into::<f64>::into(*pair.0) / max_signal))
-        .collect()
-}
-
-fn amplitude_demodulation(modulated_signal: &Vec<f64>, carrier_signal: &[f64]) -> Vec<f64> {
-    let m = 0.9;
-    let epsilon = 1e-10;
-    assert_eq!(modulated_signal.len(), carrier_signal.len());
-
-    modulated_signal
-        .iter()
-        .zip(carrier_signal.iter())
-        .map(|(&mod_signal, &carrier)| {
-            if carrier.abs() < epsilon {
-                0.0
-            } else {
-                (mod_signal / carrier - 1.0) / m
-            }
-        })
         .collect()
 }
 
@@ -205,36 +163,31 @@ fn main() {
         "amplitude",
     );
 
-    let noised_signal = noise_signal(&modulated_signal);
-    let demodulated_signal = amplitude_demodulation(&noised_signal, &carrier);
-    let demodulated_signal: Vec<f64> = demodulated_signal
-        .iter()
-        .map(|value| if *value > 1.01 { 0.0 } else { *value })
-        .map(|value| if value < -0.01 { 0.0 } else { value })
-        .map(|value| if value > 0.8 { 1.0 } else { 0.0 })
-        .collect();
-    let demodulated_signal: Vec<f64> = demodulated_signal
-        .iter()
-        .take(demodulated_signal.len() - 51)
-        .enumerate()
-        .map(|(i, _)| {
-            if demodulated_signal[i..i + 50]
-                .iter()
-                .filter(|&&num| num > 0.9)
-                .count()
-                > 1
-            {
-                1.0
-            } else {
-                0.0
-            }
-        })
-        .collect();
+    let noised_signal = noise_spectrum(&fft_complex(&modulated_signal));
     let noised_spectrum = signal_spectrum(&noised_signal);
-    let hilberted_spectrum = hilbert(&noised_signal);
-    let squared_spectrum: Vec<f64> = hilberted_spectrum
+
+    let mut processed_signal: Vec<f64> = noised_signal.iter().map(|&i| i).collect();
+    let mut processed_signal_timeline: Vec<f64> = timeline.iter().map(|&i| i).collect();
+    for i in 1..processed_signal.len() - 1 {
+        if !(noised_signal[i - 1] <= noised_signal[i] && noised_signal[i + 1] <= noised_signal[i]) {
+            processed_signal[i] = -1.0;
+            processed_signal_timeline[i] = -1.0;
+        }
+    }
+    let processed_signal: Vec<f64> = processed_signal
         .iter()
-        .map(|&value| if value <= 0.0003 { 0.0 } else { 1.0 })
+        .filter(|&&v| v > 0.0)
+        .map(|&v| v)
+        .collect();
+    let processed_signal_timeline: Vec<f64> = processed_signal_timeline
+        .iter()
+        .filter(|&&v| v > 0.0)
+        .map(|&v| v)
+        .collect();
+
+    let processed_signal: Vec<f64> = processed_signal
+        .iter()
+        .map(|&v| if v > 1.5 { 1.0 } else { 0.0 })
         .collect();
 
     let dirname = String::from("out/hilberts-ifft/");
@@ -255,15 +208,18 @@ fn main() {
         "amplitude",
     );
     plot_vector(
-        &demodulated_signal,
-        &timeline[0..demodulated_signal.len()],
-        &format!("{}{}.svg", dirname, "demodulated-signal"),
-        "Demodulated signal",
+        &processed_signal,
+        &processed_signal_timeline[0..processed_signal.len()],
+        &format!("{}{}.svg", dirname, "processed-signal"),
+        "Processed signal",
         "time",
         "amplitude",
     );
     plot_vector(
-        &modulated_spectrum[0..100],
+        &modulated_spectrum[0..100]
+            .iter()
+            .map(|&i| i.abs())
+            .collect::<Vec<f64>>(),
         &freqs[0..100],
         &format!("{}{}.svg", dirname, "modulated-spectrum"),
         "Modulated signal spectrum",
@@ -275,22 +231,6 @@ fn main() {
         &freqs[0..100],
         &format!("{}{}.svg", dirname, "noised-spectrum"),
         "Noised signal spectrum",
-        "frequency",
-        "amplitude",
-    );
-    plot_vector(
-        &hilberted_spectrum,
-        &timeline[0..hilberted_spectrum.len()],
-        &format!("{}{}.svg", dirname, "hilbert-spectrum"),
-        "Hilbert spectrum",
-        "frequency",
-        "amplitude",
-    );
-    plot_vector(
-        &squared_spectrum,
-        &timeline[0..squared_spectrum.len()],
-        &format!("{}{}.svg", dirname, "squared-spectrum"),
-        "Squared Hilbert spectrum",
         "frequency",
         "amplitude",
     );
@@ -337,8 +277,8 @@ fn main() {
         "amplitude",
     );
     plot_vector(
-        &freq_mod_spectrum[0..100],
-        &freqs[0..100],
+        &freq_mod_spectrum[0..200],
+        &freqs[0..200],
         &format!("{}{}.svg", dirname, "freq-modulated-spectrum"),
         "Frequency modulated spectrum",
         "frequency",
