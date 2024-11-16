@@ -9,6 +9,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
+name = "modulation"
+version = "0.2.0"
+dependencies = [
+ "poloto",
+ "rustfft",
+]
+
+[[package]]
 name = "num-complex"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -79,14 +87,6 @@ name = "tagu"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eddb6b06d20fba9ed21fca3d696ee1b6e870bca0bcf9fa2971f6ae2436de576a"
-
-[[package]]
-name = "tipis-one"
-version = "0.1.0"
-dependencies = [
- "poloto",
- "rustfft",
-]
 
 [[package]]
 name = "transpose"
